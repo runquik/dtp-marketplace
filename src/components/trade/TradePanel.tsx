@@ -84,6 +84,10 @@ export default function TradePanel({ selectedOffer, gameState, playerZip, onExec
 
   const estimatedTotal = priceUsd * qty + (freightQuote?.totalUsd ?? 0);
   const canAfford = tradeSide === 'sell' || gameState.org.balance / 1_000_000 >= estimatedTotal;
+  const tradeValueMicro = priceUsd * qty * 1_000_000;
+  const capMicro = gameState.org.maxTradeCapMicro ?? Number.MAX_SAFE_INTEGER;
+  const exceedsCap = tradeValueMicro > capMicro;
+  const capUsd = capMicro / 1_000_000;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4 shadow-sm">
@@ -175,8 +179,18 @@ export default function TradePanel({ selectedOffer, gameState, playerZip, onExec
         </div>
       )}
 
+      {exceedsCap && qty > 0 && (
+        <div className="flex items-start gap-2 text-amber-700 text-sm bg-amber-50 rounded-xl px-3 py-2 border border-amber-100">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            Trade value exceeds your ${capUsd.toLocaleString()} cap.{' '}
+            Complete more trades to unlock higher limits.
+          </span>
+        </div>
+      )}
+
       <button onClick={runMatch}
-        disabled={!freightQuote || matching || !canAfford || qty <= 0 || !hasInventory}
+        disabled={!freightQuote || matching || !canAfford || qty <= 0 || !hasInventory || exceedsCap}
         className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition-all shadow-sm">
         <Zap className="w-4 h-4" />
         {matching ? 'Executing…' : 'Execute Trade via DTP'}

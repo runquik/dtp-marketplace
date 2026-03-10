@@ -1,6 +1,66 @@
 // ---------------------------------------------------------------------------
-// Account
+// Account — identity, verification, certifications, trust
 // ---------------------------------------------------------------------------
+
+export type EntityType = 'llc' | 'corp' | 'sole_prop' | 'cooperative' | 'partnership';
+
+export const ENTITY_TYPES: { id: EntityType; label: string }[] = [
+  { id: 'llc',         label: 'LLC' },
+  { id: 'corp',        label: 'Corporation' },
+  { id: 'sole_prop',   label: 'Sole Proprietorship' },
+  { id: 'cooperative', label: 'Cooperative' },
+  { id: 'partnership', label: 'Partnership' },
+];
+
+export type CertType =
+  | 'usda_organic'
+  | 'fda_facility'
+  | 'sqf'
+  | 'brc'
+  | 'gap'
+  | 'non_gmo'
+  | 'kosher'
+  | 'halal'
+  | 'fsma';
+
+export const CERT_TYPES: {
+  id: CertType; label: string; description: string; verifiable: boolean; placeholder: string;
+}[] = [
+  { id: 'usda_organic',  label: 'USDA Organic',                 description: 'NOP certified organic operation',                  verifiable: true,  placeholder: 'Cert # (e.g. 4-089-4)' },
+  { id: 'fda_facility',  label: 'FDA Facility Registration',    description: 'FDA food facility registration number',            verifiable: true,  placeholder: 'e.g. 12345678901' },
+  { id: 'sqf',           label: 'SQF Certified',                description: 'Safe Quality Food certification',                  verifiable: false, placeholder: 'Certificate number' },
+  { id: 'brc',           label: 'BRCGS Certified',              description: 'British Retail Consortium Global Standard',        verifiable: false, placeholder: 'Certificate number' },
+  { id: 'gap',           label: 'GAP / GMP Certified',          description: 'Good Agricultural / Manufacturing Practices',      verifiable: false, placeholder: 'Certificate number' },
+  { id: 'non_gmo',       label: 'Non-GMO Project Verified',     description: 'Non-GMO Project verified operation',               verifiable: false, placeholder: 'Certificate number' },
+  { id: 'kosher',        label: 'Kosher Certified',             description: 'Certified kosher operation or product line',       verifiable: false, placeholder: 'Agency + cert code' },
+  { id: 'halal',         label: 'Halal Certified',              description: 'Certified halal operation or product line',        verifiable: false, placeholder: 'Agency + cert code' },
+  { id: 'fsma',          label: 'FSMA Compliant',               description: 'Food Safety Modernization Act — PCQI on file',    verifiable: false, placeholder: 'PCQI name or ref #' },
+];
+
+export interface Certification {
+  id: string;
+  type: CertType;
+  certNumber: string;
+  issuingBody: string;
+  expiresAt: number;        // ms timestamp
+  verifiedByDtp: boolean;   // auto-verified for USDA/FDA; manual otherwise
+  verifiedAt?: number;
+}
+
+// Progressive trade caps — amounts in microdollars ($1 = 1_000_000)
+export const TRADE_CAP_LEVELS: { minTrades: number; capMicro: number; label: string }[] = [
+  { minTrades: 0,  capMicro: 5_000_000_000,         label: '$5,000' },
+  { minTrades: 1,  capMicro: 15_000_000_000,         label: '$15,000' },
+  { minTrades: 3,  capMicro: 50_000_000_000,         label: '$50,000' },
+  { minTrades: 10, capMicro: Number.MAX_SAFE_INTEGER, label: 'Unlimited' },
+];
+
+export function getTradeCapMicro(tradeCount: number): number {
+  for (let i = TRADE_CAP_LEVELS.length - 1; i >= 0; i--) {
+    if (tradeCount >= TRADE_CAP_LEVELS[i].minTrades) return TRADE_CAP_LEVELS[i].capMicro;
+  }
+  return TRADE_CAP_LEVELS[0].capMicro;
+}
 
 export type BusinessType =
   | 'manufacturer'
@@ -21,14 +81,41 @@ export const BUSINESS_TYPES: { id: BusinessType; label: string; emoji: string; d
 
 export interface PlayerOrg {
   id: string;
-  name: string;
+
+  // Legal identity
+  legalName: string;            // registered legal entity name
+  dba?: string;                 // doing-business-as trade name
+  name: string;                 // display name (dba ?? legalName)
+  entityType: EntityType;
+  stateOfIncorporation: string; // 2-letter state code
+  einLast4: string;             // last 4 digits of EIN, for display only
+
+  // Business profile
   businessType: BusinessType;
   city: string;
   state: string;
   zip: string;
   categories: string[];
-  balance: number;
+
+  // Financial
+  balance: number;              // microdollars
   createdAt: number;
+
+  // Identity verification (set server-side, not self-reported)
+  verifiedEntity: boolean;
+  verifiedAt?: number;
+
+  // Certifications
+  certifications: Certification[];
+
+  // Trust / reputation
+  tradeCount: number;
+  disputeCount: number;
+  totalVolumeUsdMicro: number;
+  maxTradeCapMicro: number;     // enforced per trade; grows with track record
+
+  // NEAR Protocol wallet
+  nearAccountId?: string;
 }
 
 export interface InventoryItem {

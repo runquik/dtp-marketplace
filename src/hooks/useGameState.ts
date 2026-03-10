@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   GameState, PlayerOrg, MarketOffer, FreightQuote, TradeMatch,
   InventoryItem, Recipe, ManufactureRecord, BusinessType,
+  getTradeCapMicro, TRADE_CAP_LEVELS,
 } from '@/lib/types';
 import { loadGameState, saveGameState, clearGameState } from '@/lib/storage';
 import { computeSavings } from '@/lib/calculator';
@@ -12,7 +13,15 @@ import { microToUsd, usdToMicro } from '@/lib/units';
 const STARTING_BALANCE = 10_000_000_000; // $10,000 in microdollars
 
 function makeInitialState(org: PlayerOrg): GameState {
-  return { org, inventory: [], matchHistory: [], manufactureHistory: [], totalSavingsUsd: 0, score: 0, streak: 0 };
+  return {
+    org,
+    inventory: [],
+    matchHistory: [],
+    manufactureHistory: [],
+    totalSavingsUsd: 0,
+    score: 0,
+    streak: 0,
+  };
 }
 
 export function useGameState() {
@@ -31,10 +40,24 @@ export function useGameState() {
   }, []);
 
   const createOrg = useCallback((partial: Omit<PlayerOrg, 'id' | 'balance' | 'createdAt'>) => {
+    // defaults applied first; partial overrides them; id/balance/createdAt always win
+    const defaults = {
+      legalName:            partial.name ?? 'Unknown',
+      entityType:           'llc' as const,
+      stateOfIncorporation: partial.state ?? 'XX',
+      einLast4:             '****',
+      verifiedEntity:       false,
+      certifications:       [] as PlayerOrg['certifications'],
+      tradeCount:           0,
+      disputeCount:         0,
+      totalVolumeUsdMicro:  0,
+      maxTradeCapMicro:     5_000_000_000,
+    };
     const org: PlayerOrg = {
+      ...defaults,
       ...partial,
-      id: `org-${Date.now()}`,
-      balance: STARTING_BALANCE,
+      id:        `org-${Date.now()}`,
+      balance:   STARTING_BALANCE,
       createdAt: Date.now(),
     };
     persist(makeInitialState(org));
@@ -80,6 +103,10 @@ export function useGameState() {
       const totalCostMicro = usdToMicro(unitPriceUsd * quantityLbs + freightQuote.totalUsd);
       const totalRevenueMicro = usdToMicro(unitPriceUsd * quantityLbs - freightQuote.totalUsd);
       const balanceDelta = playerSide === 'buy' ? -totalCostMicro : Math.max(0, totalRevenueMicro);
+      const tradeValueMicro = usdToMicro(unitPriceUsd * quantityLbs);
+
+      // Trade cap enforcement
+      if (tradeValueMicro > state.org.maxTradeCapMicro) return null;
 
       if (playerSide === 'buy' && state.org.balance + balanceDelta < 0) return null;
 
@@ -130,8 +157,18 @@ export function useGameState() {
         }
       }
 
+      const nextTradeCount = state.org.tradeCount + 1;
+      const nextVolume = state.org.totalVolumeUsdMicro + tradeValueMicro;
+      const nextCap = getTradeCapMicro(nextTradeCount);
+
       const next: GameState = {
-        org: { ...state.org, balance: state.org.balance + balanceDelta },
+        org: {
+          ...state.org,
+          balance: state.org.balance + balanceDelta,
+          tradeCount: nextTradeCount,
+          totalVolumeUsdMicro: nextVolume,
+          maxTradeCapMicro: nextCap,
+        },
         inventory: nextInventory,
         matchHistory: [match, ...state.matchHistory].slice(0, 50),
         manufactureHistory: state.manufactureHistory,

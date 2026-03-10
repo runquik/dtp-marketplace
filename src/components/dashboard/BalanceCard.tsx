@@ -1,9 +1,9 @@
 'use client';
 
-import { GameState } from '@/lib/types';
-import { microToUsd, formatUsd, formatLbs } from '@/lib/units';
+import { GameState, TRADE_CAP_LEVELS } from '@/lib/types';
+import { microToUsd, formatUsd } from '@/lib/units';
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, ShieldCheck, Shield } from 'lucide-react';
 
 interface Props { gameState: GameState }
 
@@ -13,6 +13,12 @@ export default function BalanceCard({ gameState }: Props) {
   const pnl = balance - start;
   const isPositive = pnl >= 0;
   const inventoryValue = gameState.inventory.reduce((s, i) => s + i.avgCostPerLb * i.quantityLbs, 0);
+
+  const tradeCount = gameState.org.tradeCount ?? 0;
+  const capMicro = gameState.org.maxTradeCapMicro ?? 5_000_000_000;
+  const capUsd = capMicro / 1_000_000;
+  const nextLevel = TRADE_CAP_LEVELS.find(l => l.minTrades > tradeCount);
+  const isVerified = gameState.org.verifiedEntity;
 
   const sparkData = [
     { v: start },
@@ -54,17 +60,24 @@ export default function BalanceCard({ gameState }: Props) {
         )}
       </div>
 
-      {/* Inventory + Score */}
+      {/* Inventory + Trust */}
       <div className="flex flex-col gap-3">
         <div className="bg-white rounded-2xl p-3 border border-slate-100 shadow-sm flex-1">
           <div className="text-slate-400 text-xs font-medium mb-1">Inventory Value</div>
           <div className="text-slate-900 text-lg font-bold">{formatUsd(inventoryValue)}</div>
           <div className="text-slate-400 text-xs">{gameState.inventory.length} SKUs</div>
         </div>
-        <div className="bg-amber-50 rounded-2xl p-3 border border-amber-100 shadow-sm flex-1">
-          <div className="text-amber-600 text-xs font-medium mb-1">Score</div>
-          <div className="text-amber-700 text-lg font-bold">{gameState.score.toLocaleString()}</div>
-          <div className="text-amber-500 text-xs">{gameState.streak}x streak</div>
+        <div className={`rounded-2xl p-3 border shadow-sm flex-1 ${isVerified ? 'bg-green-50 border-green-100' : 'bg-slate-50 border-slate-100'}`}>
+          <div className={`text-xs font-medium mb-1 flex items-center gap-1 ${isVerified ? 'text-green-600' : 'text-slate-400'}`}>
+            {isVerified ? <ShieldCheck className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
+            Trade Cap
+          </div>
+          <div className={`text-lg font-bold ${isVerified ? 'text-green-700' : 'text-slate-700'}`}>
+            {capMicro >= Number.MAX_SAFE_INTEGER ? 'Unlimited' : `$${(capUsd / 1000).toFixed(0)}k`}
+          </div>
+          <div className={`text-xs ${isVerified ? 'text-green-500' : 'text-slate-400'}`}>
+            {tradeCount} trade{tradeCount !== 1 ? 's' : ''} · {nextLevel ? `$${(nextLevel.capMicro / 1_000_000_000).toFixed(0)}k after ${nextLevel.minTrades}` : 'max level'}
+          </div>
         </div>
       </div>
     </div>
