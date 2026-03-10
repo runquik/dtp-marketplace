@@ -1,8 +1,8 @@
 import {
   MarketOffer,
-  SAMPLE_PRODUCTS,
-  PRICE_RANGES,
+  MARKET_PRODUCTS,
   US_CITY_ZIPS,
+  REEFER_CATEGORIES,
   Side,
   FreightMode,
   TempClass,
@@ -10,50 +10,67 @@ import {
 
 const CERTIFICATIONS = [
   'USDA Organic', 'Non-GMO Project', 'GAP Certified', 'SQF Level 2',
-  'Rainforest Alliance', 'Fair Trade', 'Kosher', 'Halal',
+  'Rainforest Alliance', 'Fair Trade', 'Kosher', 'Halal', 'FSMA 204',
 ];
+
+const ORG_ADJECTIVES = ['Pacific', 'Heartland', 'Summit', 'Prairie', 'Valley', 'Coastal', 'Blue Ridge', 'Cascade', 'Sunbelt', 'Great Plains'];
+const ORG_NOUNS = ['Foods', 'Produce', 'Growers', 'Trading', 'Distribution', 'Supply', 'Commodities', 'Harvest', 'Fresh Co.', 'Ag Partners'];
 
 function rand(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
-
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
+function generateOrgName() {
+  return `${pick(ORG_ADJECTIVES)} ${pick(ORG_NOUNS)}`;
+}
 
-function makeOffer(id: string): MarketOffer {
-  const categoryKeys = Object.keys(SAMPLE_PRODUCTS);
+let _counter = 1000;
+function nextId() { return `offer-${++_counter}`; }
+
+function makeOffer(): MarketOffer {
+  const categoryKeys = Object.keys(MARKET_PRODUCTS);
   const category = pick(categoryKeys);
-  const productName = pick(SAMPLE_PRODUCTS[category]);
-  const [minPrice, maxPrice] = PRICE_RANGES[category];
-  const pricePerLbMicro = rand(minPrice, maxPrice);
+  const product = pick(MARKET_PRODUCTS[category]);
+  const pricePerLbMicro = rand(product.priceRange[0], product.priceRange[1]);
 
   const origin = pick(US_CITY_ZIPS);
   const side: Side = Math.random() > 0.5 ? 'buy' : 'sell';
-  const freightMode: FreightMode = Math.random() > 0.35 ? 'LTL' : 'FTL';
-  const tempClass: TempClass =
-    ['frozen', 'dairy', 'meat'].includes(category) ? 'reefer' : 'ambient';
 
-  // 0–2 certifications
-  const certCount = rand(0, 2);
+  // Temp class is determined by category, not random
+  const tempClass: TempClass = REEFER_CATEGORIES.has(category) ? 'reefer' : 'ambient';
+
+  // Quantity: larger for raw/commodity, smaller for value-added/packaging
+  const isHighValue = ['meat', 'dairy', 'value-added'].includes(category);
+  const maxQty = isHighValue ? 5000 : 40000;
+  const minQty = category === 'packaging' ? 200 : 500;
+  const quantityLbs = rand(minQty, maxQty);
+
+  // FTL only makes sense for large quantities
+  const freightMode: FreightMode = quantityLbs > 20000 ? (Math.random() > 0.4 ? 'FTL' : 'LTL') : 'LTL';
+
+  // 0-2 certifications, more likely for organic/produce
+  const certCount = category === 'produce' ? rand(0, 3) : rand(0, 1);
   const certifications: string[] = [];
   const certPool = [...CERTIFICATIONS];
   for (let i = 0; i < certCount; i++) {
+    if (certPool.length === 0) break;
     const idx = Math.floor(Math.random() * certPool.length);
     certifications.push(...certPool.splice(idx, 1));
   }
 
   const now = Date.now();
   return {
-    id,
+    id: nextId(),
     side,
     organizationName: generateOrgName(),
     city: origin.city,
     state: origin.state,
     zip: origin.zip,
-    productName,
+    productName: product.name,
     category,
-    quantityLbs: rand(500, 40000),
+    quantityLbs,
     pricePerLbMicro,
     freightMode,
     tempClass,
@@ -63,25 +80,13 @@ function makeOffer(id: string): MarketOffer {
   };
 }
 
-let _counter = 1000;
-function nextId() { return `offer-${++_counter}`; }
-
-const ORG_ADJECTIVES = ['Pacific', 'Heartland', 'Summit', 'Prairie', 'Valley', 'Coastal', 'Blue Ridge', 'Cascade'];
-const ORG_NOUNS = ['Foods', 'Produce', 'Growers', 'Trading', 'Distribution', 'Supply', 'Commodities', 'Harvest'];
-function generateOrgName() {
-  return `${pick(ORG_ADJECTIVES)} ${pick(ORG_NOUNS)}`;
-}
-
 export function seedOrderbook(count = 200): MarketOffer[] {
-  return Array.from({ length: count }, () => makeOffer(nextId()));
+  return Array.from({ length: count }, makeOffer);
 }
 
 export function replenishOrderbook(offers: MarketOffer[], target = 200): MarketOffer[] {
   const now = Date.now();
-  // Remove expired offers
   const live = offers.filter(o => o.expiresAt > now);
-  const needed = target - live.length;
-  if (needed <= 0) return live;
-  const newOffers = Array.from({ length: needed }, () => makeOffer(nextId()));
-  return [...live, ...newOffers];
+  const needed = Math.max(0, target - live.length);
+  return [...live, ...Array.from({ length: needed }, makeOffer)];
 }

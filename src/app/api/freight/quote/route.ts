@@ -32,35 +32,68 @@ async function getRoadMiles(
     const data = await res.json();
     const meters = data.routes?.[0]?.distance;
     if (meters == null) return null;
-    return meters / 1609.344; // → miles
+    return meters / 1609.344;
   } catch { return null; }
 }
 
-function estimateMiles(zip1: string, zip2: string): number {
-  // Rough fallback: zip prefix difference as a very crude distance proxy
+function fallbackMiles(zip1: string, zip2: string): number {
   const diff = Math.abs(parseInt(zip1.slice(0, 3)) - parseInt(zip2.slice(0, 3)));
-  return Math.max(50, diff * 8 + 100);
+  return Math.max(50, diff * 7 + 80);
+}
+
+/**
+ * LTL rate model — per lb, based on distance band.
+ * Reflects realistic CWT-based LTL market rates for food-grade freight.
+ * Source: DAT, FreightQuote industry benchmarks.
+ */
+function ltlRatePerLb(miles: number, tempClass: 'ambient' | 'reefer'): number {
+  let rate: number;
+  if      (miles < 150)  rate = 0.08;
+  else if (miles < 350)  rate = 0.11;
+  else if (miles < 600)  rate = 0.16;
+  else if (miles < 1000) rate = 0.22;
+  else if (miles < 1500) rate = 0.29;
+  else                   rate = 0.37;
+
+  if (tempClass === 'reefer') rate *= 1.28;
+  return rate;
+}
+
+/**
+ * FTL rate model — total truck cost divided by quantity.
+ * A standard 53' reefer holds ~44,000 lbs.
+ * FTL is only efficient at high quantities.
+ */
+function ftlTotalUsd(miles: number, tempClass: 'ambient' | 'reefer'): number {
+  const ratePerMile = tempClass === 'reefer' ? 2.80 : 2.20;
+  return Math.max(400, miles * ratePerMile);
 }
 
 export async function POST(req: NextRequest) {
   const body: QuoteRequest = await req.json();
   const { originZip, destZip, quantityLbs, freightMode, tempClass } = body;
+  const qty = Math.max(1, quantityLbs);
 
   const [orig, dest] = await Promise.all([geocodeZip(originZip), geocodeZip(destZip)]);
-
   let miles: number;
   if (orig && dest) {
-    miles = (await getRoadMiles(orig, dest)) ?? estimateMiles(originZip, destZip);
+    miles = (await getRoadMiles(orig, dest)) ?? fallbackMiles(originZip, destZip);
   } else {
-    miles = estimateMiles(originZip, destZip);
+    miles = fallbackMiles(originZip, destZip);
   }
 
-  // Rate model
-  const baseRatePerMile = freightMode === 'FTL' ? 2.20 : 3.10;
-  const reeferMultiplier = tempClass === 'reefer' ? 1.28 : 1.0;
-  const rawTotal = miles * baseRatePerMile * reeferMultiplier;
-  const totalUsd = Math.max(120, rawTotal);
-  const perLbUsd = totalUsd / Math.max(quantityLbs, 1);
+  let totalUsd: number;
+  let effectiveMode = freightMode;
+
+  if (freightMode === 'FTL') {
+    totalUsd = ftlTotalUsd(miles, tempClass);
+  } else {
+    // LTL: per-lb rate × quantity, minimum $150
+    const ratePerLb = ltlRatePerLb(miles, tempClass);
+    totalUsd = Math.max(150, ratePerLb * qty);
+  }
+
+  const perLbUsd = totalUsd / qty;
   const transitDays = Math.max(1, Math.ceil(miles / 500));
 
   return NextResponse.json({
@@ -70,5 +103,6 @@ export async function POST(req: NextRequest) {
     transitDays,
     totalUsd: Math.round(totalUsd * 100) / 100,
     perLbUsd: Math.round(perLbUsd * 10000) / 10000,
+    mode: effectiveMode,
   });
 }

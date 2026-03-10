@@ -15,55 +15,38 @@ export default function Orderbook({ offers, selectedOffer, onSelect, playerCateg
   const [sideFilter, setSideFilter] = useState<'all' | 'buy' | 'sell'>('all');
   const [catFilter, setCatFilter] = useState<string>('all');
 
-  const filtered = useMemo(() => {
-    return offers.filter(o => {
+  const filtered = useMemo(() =>
+    offers.filter(o => {
       if (sideFilter !== 'all' && o.side !== sideFilter) return false;
       if (catFilter !== 'all' && o.category !== catFilter) return false;
       return true;
-    });
-  }, [offers, sideFilter, catFilter]);
+    }), [offers, sideFilter, catFilter]);
 
   return (
     <div className="flex flex-col h-full">
-      {/* Filters */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         {(['all', 'buy', 'sell'] as const).map(s => (
-          <button
-            key={s}
-            onClick={() => setSideFilter(s)}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+          <button key={s} onClick={() => setSideFilter(s)}
+            className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-colors ${
               sideFilter === s
-                ? s === 'buy' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
-                  : s === 'sell' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
-                  : 'bg-slate-600 text-white border border-slate-500'
-                : 'bg-[#1a1d27] text-slate-400 border border-slate-700 hover:border-slate-500'
-            }`}
-          >
-            {s === 'all' ? 'All' : s.toUpperCase()}
+                ? s === 'buy'  ? 'bg-blue-500 text-white'
+                  : s === 'sell' ? 'bg-orange-500 text-white'
+                  : 'bg-slate-800 text-white'
+                : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'
+            }`}>
+            {s === 'all' ? 'All offers' : s === 'buy' ? '🔵 Buy' : '🟠 Sell'}
           </button>
         ))}
-        <select
-          value={catFilter}
-          onChange={e => setCatFilter(e.target.value)}
-          className="text-xs bg-[#1a1d27] border border-slate-700 text-slate-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-green-400"
-        >
+        <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
+          className="text-xs bg-white border border-slate-200 text-slate-600 rounded-full px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-400">
           <option value="all">All categories</option>
-          {FOOD_CATEGORIES.map(c => (
-            <option key={c.id} value={c.id}>{c.label}</option>
-          ))}
+          {FOOD_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
         </select>
-        <span className="text-slate-500 text-xs ml-auto">{filtered.length} offers</span>
+        <span className="text-slate-400 text-xs ml-auto">{filtered.length} offers</span>
       </div>
-
-      {/* Offer list */}
       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
         {filtered.slice(0, 60).map(offer => (
-          <OfferCard
-            key={offer.id}
-            offer={offer}
-            selected={selectedOffer?.id === offer.id}
-            onSelect={() => onSelect(offer)}
-          />
+          <OfferCard key={offer.id} offer={offer} selected={selectedOffer?.id === offer.id} onSelect={() => onSelect(offer)} />
         ))}
       </div>
     </div>
